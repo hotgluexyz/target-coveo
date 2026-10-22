@@ -25,6 +25,10 @@ CONTROL_KEYS = frozenset({EXTERNAL_ID_KEY, DOCUMENT_ID_KEY})
 UNCOMPRESSED = "UNCOMPRESSED"
 SUPPORTED_COMPRESSION_TYPES = frozenset({UNCOMPRESSED})
 IDENTITY_TYPES = frozenset({"User", "Group", "VirtualGroup", "Unknown"})
+# Coveo Push IdentityBody uses uppercase entity types.
+SECURITY_IDENTITY_TYPES = frozenset({"USER", "GROUP", "VIRTUAL_GROUP", "UNKNOWN"})
+_SECURITY_IDENTITY_BODY_KEYS = frozenset({"identity", "members", "mappings", "wellKnowns"})
+_SECURITY_IDENTITY_REF_KEYS = frozenset({"name", "type", "provider"})
 
 # Coveo limits `data` and `compressedBinaryData` to 5 MB per single-item push.
 MAX_INLINE_BYTES = 5 * 1024 * 1024
@@ -264,6 +268,45 @@ def is_delete_record(record: dict) -> bool:
     if record[ACTION_KEY] != DELETE_ACTION:
         _fail(f"{ACTION_KEY} only supports the value '{DELETE_ACTION}'")
     return True
+
+
+def _validate_security_identity_ref(value: object, path: str, *, allow_provider: bool) -> None:
+    if not isinstance(value, dict):
+        _fail(f"{path} must be an object")
+    allowed = _SECURITY_IDENTITY_REF_KEYS if allow_provider else {"name", "type"}
+    unknown = set(value) - allowed
+    if unknown:
+        _fail(f"{path} has unsupported keys: {sorted(unknown)}")
+    if not _is_non_empty_str(value.get("name")):
+        _fail(f"{path}.name is required and must be a non-empty string")
+    identity_type = value.get("type")
+    if not isinstance(identity_type, str) or identity_type.upper() not in SECURITY_IDENTITY_TYPES:
+        _fail(f"{path}.type must be one of {sorted(SECURITY_IDENTITY_TYPES)}")
+    if value["type"] != value["type"].upper():
+        _fail(f"{path}.type must be uppercase ({value['type'].upper()})")
+    if allow_provider and "provider" in value and not _is_non_empty_str(value["provider"]):
+        _fail(f"{path}.provider must be a non-empty string when provided")
+
+
+def validate_security_identity_record(record: dict) -> None:
+    """Validate a Push API security identity upsert without modifying it."""
+    validate_external_id(record)
+    unknown = set(record) - ({EXTERNAL_ID_KEY} | _SECURITY_IDENTITY_BODY_KEYS)
+    if unknown:
+        _fail(f"SecurityIdentities record has unsupported keys: {sorted(unknown)}")
+    if "identity" not in record:
+        _fail("identity is required on SecurityIdentities records")
+    _validate_security_identity_ref(record["identity"], "identity", allow_provider=False)
+    for key in ("members", "mappings", "wellKnowns"):
+        if key not in record:
+            continue
+        value = record[key]
+        if not isinstance(value, list):
+            _fail(f"{key} must be an array")
+        for index, item in enumerate(value):
+            _validate_security_identity_ref(
+                item, f"{key}[{index}]", allow_provider=(key == "mappings")
+            )
 
 
 def normalize_push_api_url(url: str | None, default: str) -> str:

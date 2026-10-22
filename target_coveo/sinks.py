@@ -13,8 +13,45 @@ from target_coveo.validation import (
     EXTERNAL_ID_KEY,
     is_delete_record,
     validate_delete_record,
+    validate_security_identity_record,
     validate_upsert_record,
 )
+
+
+class SecurityIdentitiesSink(CoveoRecordSink):
+    """Upserts security identities into the configured Coveo identity provider."""
+
+    name = "SecurityIdentities"
+    allows_externalid: ClassVar[list[str]] = ["SecurityIdentities"]
+
+    def preprocess_record(self, record: dict, context: dict) -> dict:  # noqa: ARG002
+        record = copy.deepcopy(record)
+        validate_security_identity_record(record)
+        return record
+
+    def upsert_record(self, record: dict, context: dict) -> tuple[str, bool, dict]:  # noqa: ARG002
+        body = {key: value for key, value in record.items() if key != EXTERNAL_ID_KEY}
+        response = self.request_api(
+            "PUT",
+            endpoint=self.security_identities_endpoint(),
+            params={},
+            request_data=body,
+            headers={},
+        )
+        identity_name = record["identity"]["name"]
+        self.logger.info(
+            "Coveo accepted security identity externalId=%s name=%s (HTTP %s)",
+            record.get(EXTERNAL_ID_KEY),
+            identity_name,
+            response.status_code,
+        )
+        return identity_name, True, {
+            "action": "upsert",
+            "httpStatus": response.status_code,
+            "coveoStatus": "accepted",
+            "identity": identity_name,
+            "identityType": record["identity"]["type"],
+        }
 
 
 class DocumentsSink(CoveoRecordSink):

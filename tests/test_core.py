@@ -15,19 +15,25 @@ import pytest
 import responses
 from hotglue_singer_sdk.exceptions import ConfigValidationError
 
-from target_coveo.sinks import DocumentsSink
+from target_coveo.sinks import DocumentsSink, SecurityIdentitiesSink
 from target_coveo.target import TargetCoveo
 
 API_KEY = "test-secret-api-key-0123456789"
 ORG_ID = "myorg"
 SOURCE_ID = "myorg-source/1"
+PROVIDER_ID = "Northstar Confluence Demo SIP"
 CONFIG: dict[str, Any] = {
     "api_key": API_KEY,
     "organization_id": ORG_ID,
     "source_id": SOURCE_ID,
+    "security_identity_provider_id": PROVIDER_ID,
 }
 DOCS_URL = (
     "https://api.cloud.coveo.com/push/v1/organizations/myorg/sources/myorg-source%2F1/documents"
+)
+IDENTITIES_URL = (
+    "https://api.cloud.coveo.com/push/v1/organizations/myorg/providers/"
+    "Northstar%20Confluence%20Demo%20SIP/permissions"
 )
 
 GROUP_PERMISSIONS = [
@@ -46,8 +52,14 @@ def _isolated_cwd(tmp_path, monkeypatch):
     (tmp_path / ".secrets").mkdir()
     monkeypatch.chdir(work)
     monkeypatch.setattr(DocumentsSink, "processed_hashes", [])
+    monkeypatch.setattr(SecurityIdentitiesSink, "processed_hashes", [])
     monkeypatch.setattr(
         DocumentsSink, "backoff_wait_generator", lambda _self: backoff.constant(interval=0)
+    )
+    monkeypatch.setattr(
+        SecurityIdentitiesSink,
+        "backoff_wait_generator",
+        lambda _self: backoff.constant(interval=0),
     )
 
 
@@ -81,14 +93,18 @@ def binary_record(content: bytes, extension: str, **overrides: Any) -> dict:
     return record
 
 
-def run_target(records: list[dict], config: dict | None = None) -> tuple[dict, str]:
+def run_target(
+    records: list[dict],
+    config: dict | None = None,
+    *,
+    stream: str = "Documents",
+) -> tuple[dict, str]:
     """Feed SCHEMA + RECORD messages into the target and return (final state, stdout)."""
     keys = sorted({key for record in records for key in record})
     schema = {"type": "object", "properties": {key: {} for key in keys}}
-    lines = [json.dumps({"type": "SCHEMA", "stream": "Documents", "schema": schema})]
+    lines = [json.dumps({"type": "SCHEMA", "stream": stream, "schema": schema})]
     lines += [
-        json.dumps({"type": "RECORD", "stream": "Documents", "record": record})
-        for record in records
+        json.dumps({"type": "RECORD", "stream": stream, "record": record}) for record in records
     ]
     target = TargetCoveo(config=dict(config or CONFIG))
     stdout = io.StringIO()
@@ -419,3 +435,75 @@ def test_push_api_url_must_be_https_coveo_host(url: str):
 def test_required_config_is_enforced():
     with pytest.raises(ConfigValidationError):
         TargetCoveo(config={"api_key": API_KEY})
+
+
+@responses.activate
+def test_security_identity_user_alias_upsert():
+    responses.put(IDENTITIES_URL, status=202)
+    record = {
+        "externalId": "confluence:user:acct-1",
+        "identity": {"name": "acct-1", "type": "USER"},
+        "mappings": [
+            {
+                "name": "user@example.test",
+                "type": "USER",
+                "provider": "Email Security Provider",
+            }
+        ],
+    }
+
+    state, output = run_target([record], stream="SecurityIdentities")
+
+    assert len(responses.calls) == 1
+    request = responses.calls[0].request
+    assert request.method == "PUT"
+    assert request.url == IDENTITIES_URL
+    assert request.headers["Authorization"] == f"Bearer {API_KEY}"
+    body = json.loads(request.body)
+    assert body == {
+        "identity": {"name": "acct-1", "type": "USER"},
+        "mappings": [
+            {
+                "name": "user@example.test",
+                "type": "USER",
+                "provider": "Email Security Provider",
+            }
+        ],
+    }
+    [bookmark] = state["bookmarks"]["SecurityIdentities"]
+    assert bookmark["success"] is True
+    assert bookmark["externalId"] == "confluence:user:acct-1"
+    assert bookmark["identity"] == "acct-1"
+    assert API_KEY not in output
+
+
+@responses.activate
+def test_security_identity_group_full_replace():
+    responses.put(IDENTITIES_URL, status=202)
+    record = {
+        "externalId": "confluence:group:eng",
+        "identity": {"name": "eng", "type": "GROUP"},
+        "members": [{"name": "acct-1", "type": "USER"}],
+    }
+
+    state, _ = run_target([record], stream="SecurityIdentities")
+
+    body = json.loads(responses.calls[0].request.body)
+    assert body["members"] == [{"name": "acct-1", "type": "USER"}]
+    assert state["bookmarks"]["SecurityIdentities"][0]["success"] is True
+
+
+@responses.activate
+def test_security_identity_rejects_lowercase_type():
+    responses.put(IDENTITIES_URL, status=202)
+    state, _ = run_target(
+        [
+            {
+                "externalId": "bad",
+                "identity": {"name": "acct-1", "type": "User"},
+            }
+        ],
+        stream="SecurityIdentities",
+    )
+    assert state["bookmarks"]["SecurityIdentities"][0]["success"] is False
+    assert len(responses.calls) == 0

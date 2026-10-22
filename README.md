@@ -11,19 +11,38 @@ pinned to `hotglue-singer-sdk==1.0.51`) and runs on Python 3.10.
 |---------|----------|-------------|
 | `api_key` | yes | Coveo API key with edit privileges on the Push source. Sent as `Authorization: Bearer <api_key>`. Never logged or written to state. |
 | `organization_id` | yes | Coveo organization ID. |
-| `source_id` | yes | Coveo Push source ID. |
+| `source_id` | yes | Coveo Push source ID (use a **Secured** Push source for ACL trimming). |
+| `security_identity_provider_id` | yes | Security identity provider ID linked to that source. |
 | `push_api_url` | no | Regional Push API base URL. Defaults to `https://api.cloud.coveo.com/push/v1`. Other values: `https://api-ca.cloud.coveo.com/push/v1`, `https://api-eu.cloud.coveo.com/push/v1`, `https://api-au.cloud.coveo.com/push/v1`, `https://apihipaa.cloud.coveo.com/push/v1`. Must be `https://*.cloud.coveo.com`; a bare host gets `/push/v1` appended. |
 
 ```json
 {
   "api_key": "<coveo push api key>",
   "organization_id": "<organization id>",
-  "source_id": "<push source id>",
+  "source_id": "<secured push source id>",
+  "security_identity_provider_id": "<security identity provider id>",
   "push_api_url": "https://api.cloud.coveo.com/push/v1"
 }
 ```
 
 Inspect the live schema with `target-coveo --about`.
+
+## Input contract: `SecurityIdentities` stream
+
+Processed before `Documents`. Each record is a Coveo
+[security identity](https://docs.coveo.com/en/167/) upsert (full group membership replace).
+
+| Field | Required | Rules |
+|-------|----------|-------|
+| `externalId` | yes | Non-empty string for target state only (not sent to Coveo). |
+| `identity` | yes | `{name, type}` with uppercase `type`: `USER`, `GROUP`, `VIRTUAL_GROUP`, or `UNKNOWN`. |
+| `members` | no | Array of `{name, type}` (groups). Sending a group replaces its prior members. |
+| `mappings` | no | Array of `{name, type, provider?}` for aliases (typically Email Security Provider). |
+| `wellKnowns` | no | Array of `{name, type}` granted identities. |
+
+```http
+PUT {push_api_url}/organizations/{organization_id}/providers/{security_identity_provider_id}/permissions
+```
 
 ## Input contract: `Documents` stream
 
@@ -163,8 +182,8 @@ Failures are per record, and the run continues.
   and no `compressedBinaryDataFileId`.
 - Only `UNCOMPRESSED` binary data is accepted. Live PDF, DOCX and text pushes using this
   spelling returned HTTP 202. Acceptance is not proof of successful downstream conversion.
-- The target does not create security identities or security providers. Identities named
-  in `permissions` must exist in, or be resolvable by, the source's security provider.
+- Security identities are upserted only through the `SecurityIdentities` stream into the
+  configured provider. The target does not create providers or sources.
 - The target does not manage source status (`REBUILD`/`IDLE`) or `orderingId`.
 - The SDK skips a record whose hash matches a successful bookmark from previous
   incremental state, so an identical re-sync is not re-pushed.

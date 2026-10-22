@@ -8,7 +8,7 @@ from hotglue_singer_sdk import typing as th
 from hotglue_singer_sdk.target_sdk.target import TargetHotglue
 
 from target_coveo.client import DEFAULT_PUSH_API_URL
-from target_coveo.sinks import DocumentsSink
+from target_coveo.sinks import DocumentsSink, SecurityIdentitiesSink
 from target_coveo.validation import normalize_push_api_url
 
 
@@ -16,7 +16,8 @@ class TargetCoveo(TargetHotglue):
     """Target for the Coveo Push API."""
 
     name = "target-coveo"
-    SINK_TYPES = [DocumentsSink]
+    # Identities before documents so ACL principals resolve before secured content.
+    SINK_TYPES = [SecurityIdentitiesSink, DocumentsSink]
 
     config_jsonschema = th.PropertiesList(
         th.Property(
@@ -36,6 +37,15 @@ class TargetCoveo(TargetHotglue):
             th.StringType,
             required=True,
             description="Coveo Push source ID",
+        ),
+        th.Property(
+            "security_identity_provider_id",
+            th.StringType,
+            required=True,
+            description=(
+                "Security identity provider ID for the secured Push source "
+                "(e.g. Northstar Confluence Demo SIP)"
+            ),
         ),
         th.Property(
             "push_api_url",
