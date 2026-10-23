@@ -40,6 +40,14 @@ Processed before `Documents`. Each record is a Coveo
 | `mappings` | no | Array of `{name, type, provider?}` for aliases (typically Email Security Provider). |
 | `wellKnowns` | no | Array of `{name, type}` granted identities. |
 
+Records **with** `mappings` (user aliases) are sent to:
+
+```http
+PUT {push_api_url}/organizations/{organization_id}/providers/{security_identity_provider_id}/mappings
+```
+
+Records **without** `mappings` (groups / plain identities) are sent to:
+
 ```http
 PUT {push_api_url}/organizations/{organization_id}/providers/{security_identity_provider_id}/permissions
 ```

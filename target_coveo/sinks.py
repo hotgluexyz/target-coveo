@@ -31,18 +31,26 @@ class SecurityIdentitiesSink(CoveoRecordSink):
 
     def upsert_record(self, record: dict, context: dict) -> tuple[str, bool, dict]:  # noqa: ARG002
         body = {key: value for key, value in record.items() if key != EXTERNAL_ID_KEY}
+        # Coveo requires aliases on /mappings; groups/members stay on /permissions.
+        # https://docs.coveo.com/en/142/
+        endpoint = (
+            self.security_identity_mappings_endpoint()
+            if record.get("mappings")
+            else self.security_identities_endpoint()
+        )
         response = self.request_api(
             "PUT",
-            endpoint=self.security_identities_endpoint(),
+            endpoint=endpoint,
             params={},
             request_data=body,
             headers={},
         )
         identity_name = record["identity"]["name"]
         self.logger.info(
-            "Coveo accepted security identity externalId=%s name=%s (HTTP %s)",
+            "Coveo accepted security identity externalId=%s name=%s endpoint=%s (HTTP %s)",
             record.get(EXTERNAL_ID_KEY),
             identity_name,
+            endpoint.rsplit("/", 1)[-1],
             response.status_code,
         )
         return identity_name, True, {
@@ -51,6 +59,7 @@ class SecurityIdentitiesSink(CoveoRecordSink):
             "coveoStatus": "accepted",
             "identity": identity_name,
             "identityType": record["identity"]["type"],
+            "endpoint": endpoint.rsplit("/", 1)[-1],
         }
 
 

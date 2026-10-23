@@ -35,6 +35,10 @@ IDENTITIES_URL = (
     "https://api.cloud.coveo.com/push/v1/organizations/myorg/providers/"
     "Northstar%20Confluence%20Demo%20SIP/permissions"
 )
+MAPPINGS_URL = (
+    "https://api.cloud.coveo.com/push/v1/organizations/myorg/providers/"
+    "Northstar%20Confluence%20Demo%20SIP/mappings"
+)
 
 GROUP_PERMISSIONS = [
     {
@@ -439,7 +443,7 @@ def test_required_config_is_enforced():
 
 @responses.activate
 def test_security_identity_user_alias_upsert():
-    responses.put(IDENTITIES_URL, status=202)
+    responses.put(MAPPINGS_URL, status=202)
     record = {
         "externalId": "confluence:user:acct-1",
         "identity": {"name": "acct-1", "type": "USER"},
@@ -457,7 +461,7 @@ def test_security_identity_user_alias_upsert():
     assert len(responses.calls) == 1
     request = responses.calls[0].request
     assert request.method == "PUT"
-    assert request.url == IDENTITIES_URL
+    assert request.url == MAPPINGS_URL
     assert request.headers["Authorization"] == f"Bearer {API_KEY}"
     body = json.loads(request.body)
     assert body == {
@@ -474,6 +478,7 @@ def test_security_identity_user_alias_upsert():
     assert bookmark["success"] is True
     assert bookmark["externalId"] == "confluence:user:acct-1"
     assert bookmark["identity"] == "acct-1"
+    assert bookmark["endpoint"] == "mappings"
     assert API_KEY not in output
 
 
@@ -488,9 +493,12 @@ def test_security_identity_group_full_replace():
 
     state, _ = run_target([record], stream="SecurityIdentities")
 
-    body = json.loads(responses.calls[0].request.body)
+    request = responses.calls[0].request
+    assert request.url == IDENTITIES_URL
+    body = json.loads(request.body)
     assert body["members"] == [{"name": "acct-1", "type": "USER"}]
     assert state["bookmarks"]["SecurityIdentities"][0]["success"] is True
+    assert state["bookmarks"]["SecurityIdentities"][0]["endpoint"] == "permissions"
 
 
 @responses.activate

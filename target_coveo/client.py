@@ -50,11 +50,18 @@ class CoveoSink(HotglueBaseSink):
         query_string = "&".join(f"{key}={quote(value, safe='')}" for key, value in pairs.items())
         return f"/organizations/{organization_id}/sources/{source_id}/documents?{query_string}"
 
-    def security_identities_endpoint(self) -> str:
-        """Build the security identity provider permissions endpoint."""
+    def _security_provider_path(self, resource: str) -> str:
         organization_id = quote(str(self.config["organization_id"]), safe="")
         provider_id = quote(str(self.config["security_identity_provider_id"]), safe="")
-        return f"/organizations/{organization_id}/providers/{provider_id}/permissions"
+        return f"/organizations/{organization_id}/providers/{provider_id}/{resource}"
+
+    def security_identities_endpoint(self) -> str:
+        """Groups/users without email aliases → Push API `/permissions`."""
+        return self._security_provider_path("permissions")
+
+    def security_identity_mappings_endpoint(self) -> str:
+        """User aliases (Email Security Provider) → Push API `/mappings`."""
+        return self._security_provider_path("mappings")
 
     def validate_response(self, response: requests.Response) -> None:
         """Map Coveo errors: 429/5xx retry; auth and payload errors fail the record."""
