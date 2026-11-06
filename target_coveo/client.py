@@ -50,9 +50,18 @@ class CoveoSink(HotglueBaseSink):
         query_string = "&".join(f"{key}={quote(value, safe='')}" for key, value in pairs.items())
         return f"/organizations/{organization_id}/sources/{source_id}/documents?{query_string}"
 
+    def require_security_identity_provider_id(self) -> str:
+        """Return SIP id or raise when SecurityIdentities are pushed without one."""
+        provider_id = self.config.get("security_identity_provider_id")
+        if not isinstance(provider_id, str) or not provider_id.strip():
+            raise InvalidPayloadError(
+                "security_identity_provider_id is required when pushing SecurityIdentities"
+            )
+        return provider_id.strip()
+
     def _security_provider_path(self, resource: str) -> str:
         organization_id = quote(str(self.config["organization_id"]), safe="")
-        provider_id = quote(str(self.config["security_identity_provider_id"]), safe="")
+        provider_id = quote(self.require_security_identity_provider_id(), safe="")
         return f"/organizations/{organization_id}/providers/{provider_id}/{resource}"
 
     def security_identities_endpoint(self) -> str:

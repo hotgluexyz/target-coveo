@@ -12,7 +12,7 @@ pinned to `hotglue-singer-sdk==1.0.51`) and runs on Python 3.10.
 | `api_key` | yes | Coveo API key with edit privileges on the Push source. Sent as `Authorization: Bearer <api_key>`. Never logged or written to state. |
 | `organization_id` | yes | Coveo organization ID. |
 | `source_id` | yes | Coveo Push source ID (use a **Secured** Push source for ACL trimming). |
-| `security_identity_provider_id` | yes | Security identity provider ID linked to that source. |
+| `security_identity_provider_id` | for SecurityIdentities | Security identity provider ID linked to a secured Push source. Required when syncing identities; omit for public Documents-only catalog sources. |
 | `push_api_url` | no | Regional Push API base URL. Defaults to `https://api.cloud.coveo.com/push/v1`. Other values: `https://api-ca.cloud.coveo.com/push/v1`, `https://api-eu.cloud.coveo.com/push/v1`, `https://api-au.cloud.coveo.com/push/v1`, `https://apihipaa.cloud.coveo.com/push/v1`. Must be `https://*.cloud.coveo.com`; a bare host gets `/push/v1` appended. |
 
 ```json
@@ -22,6 +22,16 @@ pinned to `hotglue-singer-sdk==1.0.51`) and runs on Python 3.10.
   "source_id": "<secured push source id>",
   "security_identity_provider_id": "<security identity provider id>",
   "push_api_url": "https://api.cloud.coveo.com/push/v1"
+}
+```
+
+For a public catalog Push source (Documents only), omit `security_identity_provider_id`:
+
+```json
+{
+  "api_key": "<coveo push api key>",
+  "organization_id": "<organization id>",
+  "source_id": "<push source id>"
 }
 ```
 

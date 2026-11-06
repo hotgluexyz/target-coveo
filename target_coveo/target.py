@@ -41,10 +41,10 @@ class TargetCoveo(TargetHotglue):
         th.Property(
             "security_identity_provider_id",
             th.StringType,
-            required=True,
             description=(
-                "Security identity provider ID for the secured Push source "
-                "(e.g. Northstar Confluence Demo SIP)"
+                "Security identity provider ID for a secured Push source. "
+                "Required when pushing the SecurityIdentities stream; omit for "
+                "public catalog sources that only use Documents."
             ),
         ),
         th.Property(

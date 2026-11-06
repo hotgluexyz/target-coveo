@@ -515,3 +515,31 @@ def test_security_identity_rejects_lowercase_type():
     )
     assert state["bookmarks"]["SecurityIdentities"][0]["success"] is False
     assert len(responses.calls) == 0
+
+
+@responses.activate
+def test_security_identity_requires_provider_id():
+    responses.put(IDENTITIES_URL, status=202)
+    config = {
+        "api_key": API_KEY,
+        "organization_id": ORG_ID,
+        "source_id": SOURCE_ID,
+    }
+    state, _ = run_target(
+        [
+            {
+                "externalId": "user:1",
+                "identity": {"name": "acct-1", "type": "USER"},
+                "mappings": [
+                    {"name": "user@example.com", "type": "USER", "provider": "Email Security Provider"}
+                ],
+            }
+        ],
+        stream="SecurityIdentities",
+        config=config,
+    )
+    assert state["bookmarks"]["SecurityIdentities"][0]["success"] is False
+    assert "security_identity_provider_id" in state["bookmarks"]["SecurityIdentities"][0].get(
+        "error", ""
+    )
+    assert len(responses.calls) == 0

@@ -26,6 +26,7 @@ class SecurityIdentitiesSink(CoveoRecordSink):
 
     def preprocess_record(self, record: dict, context: dict) -> dict:  # noqa: ARG002
         record = copy.deepcopy(record)
+        self.require_security_identity_provider_id()
         validate_security_identity_record(record)
         return record
 
